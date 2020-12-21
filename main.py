@@ -3,7 +3,6 @@ import math
 import statistics
 import numpy as np
 import matplotlib.pyplot as plt
-from lmfit import Parameters, fit_report, minimize
 
 #data locations
 LCdir = r"C:\Users\micha\Documents\OGLE-ATLAS-RR-c\sample_DATs"
@@ -41,6 +40,14 @@ for countLC, file in enumerate(LCfilelist):
 
     #calculate root mean square deviation from sine curve of LC
     rms_diff = math.sqrt((1 / len(sine_brightnesses)) * sum(abs(sine_brightnesses - brightnesses) ** 2))
+
+    #jerry rigged solution to prevent erroneous fitting of the wrong midpoint (half-phase off)
+    if rms_diff > 0.10:
+        sine_brightnesses = (-1 * sine_brightnesses) + (2 * average)
+
+    #calculate root mean square deviation from sine curve of LC (check, after jerry rigging)
+    rms_diff = math.sqrt((1 / len(sine_brightnesses)) * sum(abs(sine_brightnesses - brightnesses) ** 2))
+    #print RMS diff
     print(str(rms_diff))
 
     #plot the LC, sine curve
