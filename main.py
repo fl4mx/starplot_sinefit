@@ -5,6 +5,9 @@ import statistics
 import numpy as np
 from numpy.linalg import inv
 import matplotlib.pyplot as plt
+import astropy.units as u
+from astropy import coordinates as coords
+from astroquery.gaia import Gaia
 
 #data locations; replace with coordinates of LC DAT directory and metadata txt file, respectively
 LCdir = r"C:\Users\micha\Documents\SciExt_RR-c\OGLE-ATLAS-RR-c\sample_DATs"
@@ -14,10 +17,11 @@ stardata = r"C:\Users\micha\Documents\SciExt_rr-c\OGLE-ATLAS-RR-c\star_data.txt"
 #get file directory
 LCfilelist = os.listdir(LCdir)
 
-#reading all star data from DAT file (names and periods)
+#reading all star data from DAT file (names and periods for wave fitting, RA and dec for Gaia query)
 names = np.loadtxt(stardata, dtype=str, skiprows=7, usecols=0)
 periods = np.loadtxt(stardata, skiprows=7, usecols=8)
-
+allRA = np.loadtxt(stardata, dtype = "str", skiprows = 7, usecols = 3)
+alldec = np.loadtxt(stardata, dtype = "str", skiprows = 7, usecols = 4)
 
 
 
@@ -85,6 +89,34 @@ def gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase):
 
 
 
+#implementing method of querying Gaia data for the bp-rp color of the star
+def gaiaquery(starnumber, allRA, alldec):
+    #reading coords of the star
+    RA = allRA[starnumber]
+    dec = alldec[starnumber
+                 
+    #setting up coords query, height and width search precision
+    coord = coords.SkyCoord(ra = RA, dec = dec, unit = (u.hourangle, u.deg), frame = "icrs")
+    height = u.Quantity(1, u.arcsec)
+    width = u.Quantity(1, u.arcsec)
+                 
+    #query
+    star = Gaia.query_object(coordinate=coord, width=width, height=height, columns=["source_id, ra, dec, bp_rp"])
+    color = str(star["bp_rp"][0])
+                 
+    #check if coords are read correctly
+    #print("RA = " + str(RA))
+    #print("dec = " + str(dec))
+                 
+    #output query
+    print("color = " + color)
+
+    return (RA, dec, color)
+
+
+
+
+
 #driver to iterate through all the stars and plot
 for countLC, file in enumerate(LCfilelist):
     #reading LC data from LC files (dates and brightness)
@@ -115,6 +147,9 @@ for countLC, file in enumerate(LCfilelist):
     #Gauss-Newton fit, return the y values of the fitted gauss-newton curve
     gaussnewton_sin, rms = gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase)
 
+    #query Gaia for color
+    RA, dec, color = gaiaquery(countLC, allRA, alldec)
+
     #plotting
     #basic setup
     fig = plt.figure(figsize = (10,5))
@@ -127,7 +162,10 @@ for countLC, file in enumerate(LCfilelist):
     ax.scatter(phases, brightnesses)
     ax.scatter(phases, gaussnewton_sin)
     #plotting the RMS deviation onto the graph too
-    ax.text(0.90, 0.01, ("RMS = " + str(rms)), verticalalignment = 'bottom', horizontalalignment = 'right', transform = ax.transAxes, color = 'purple', fontsize = 10)
+    ax.text(0.95, 0.01, ("RMS = " + str(rms)), verticalalignment = 'bottom', horizontalalignment = 'right', transform = ax.transAxes, color = 'purple', fontsize = 10)
+    ax.text(-0.01, 1.02, ("RA = " + str(RA)), verticalalignment = 'bottom', horizontalalignment = 'right', transform = ax.transAxes, color = 'green', fontsize = 8)
+    ax.text(-0.01, 0.99, ("dec = " + str(dec)), verticalalignment = 'bottom', horizontalalignment = 'right', transform = ax.transAxes, color = 'green', fontsize = 8)
+    ax.text(-0.01, 0.96, ("Color = " + str(color)), verticalalignment = 'bottom', horizontalalignment = 'right', transform = ax.transAxes, color = 'orange', fontsize = 8)
     #show plot if testing in IDE
     #plt.show()
     #save plot
