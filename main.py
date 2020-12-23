@@ -25,6 +25,8 @@ alldec = np.loadtxt(stardata, dtype = "str", skiprows = 7, usecols = 4)
 
 
 
+
+
 #implementing Gauss-Newton Algorithm for curve fitting non linear regression; in this case, of the form Asin(Bx+C)+D
 def gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase):
     #Gauss-Newton iterations and damping parameters
@@ -81,10 +83,11 @@ def gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase):
     rms = math.sqrt((1 / (gaussnewton_sin.size)) * np.sum(abs(np.subtract(gaussnewton_sin, brightnesses)) ** 2))
 
     #print the RMS
-    print("RMS deviation = " + str(rms))
+    #print("RMS deviation = " + str(rms))
 
     #return fitted curve and RMS
     return (gaussnewton_sin, str(rms))
+
 
 
 
@@ -93,24 +96,25 @@ def gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase):
 def gaiaquery(starnumber, allRA, alldec):
     #reading coords of the star
     RA = allRA[starnumber]
-    dec = alldec[starnumber
-                 
+    dec = alldec[starnumber]
+
     #setting up coords query, height and width search precision
     coord = coords.SkyCoord(ra = RA, dec = dec, unit = (u.hourangle, u.deg), frame = "icrs")
     height = u.Quantity(1, u.arcsec)
     width = u.Quantity(1, u.arcsec)
-                 
+
     #query
     star = Gaia.query_object(coordinate=coord, width=width, height=height, columns=["source_id, ra, dec, bp_rp"])
     color = str(star["bp_rp"][0])
-                 
+
     #check if coords are read correctly
     #print("RA = " + str(RA))
     #print("dec = " + str(dec))
-                 
-    #output query
-    print("color = " + color)
 
+    #print color
+    #print("color = " + color)
+
+    #return coordinates, color
     return (RA, dec, color)
 
 
@@ -119,6 +123,7 @@ def gaiaquery(starnumber, allRA, alldec):
 
 #driver to iterate through all the stars and plot
 for countLC, file in enumerate(LCfilelist):
+
     #reading LC data from LC files (dates and brightness)
     dates = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=0)
     brightnesses = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=1)
@@ -142,30 +147,45 @@ for countLC, file in enumerate(LCfilelist):
     mid_phase = phases[mid_index]
 
     #print star name
-    print("name = " + str(name))
+    #print("name = " + str(name))
 
     #Gauss-Newton fit, return the y values of the fitted gauss-newton curve
     gaussnewton_sin, rms = gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase)
+    #shorten RMS for better visibility
+    rms = float(rms)
+    rms = round(rms, 4 - int(math.floor(math.log10(abs(rms)))) - 1)
 
     #query Gaia for color
     RA, dec, color = gaiaquery(countLC, allRA, alldec)
+    if color == "--":
+        color = "No color photometric data"
+    else:
+        #shorten color for better visibility
+        color = float(color)
+        color = round(color, 5 - int(math.floor(math.log10(abs(color)))) - 1)
 
     #plotting
     #basic setup
     fig = plt.figure(figsize = (10,5))
-    fig.suptitle(str(name), fontsize = 14, fontweight = 'bold')
+    fig.suptitle(str(name), fontsize = 22, fontweight = 'bold')
     ax = fig.add_subplot(111)
-    fig.subplots_adjust(top = 0.93)
+    fig.subplots_adjust(left = 0.1, right = 0.98, top = 0.87, bottom = 0.1)
     ax.set_xlabel("Phase")
     ax.set_ylabel("Magnitude")
     #plotting original LC, and fitted sine curve
     ax.scatter(phases, brightnesses)
     ax.scatter(phases, gaussnewton_sin)
-    #plotting the RMS deviation onto the graph too
-    ax.text(0.95, 0.01, ("RMS = " + str(rms)), verticalalignment = 'bottom', horizontalalignment = 'right', transform = ax.transAxes, color = 'purple', fontsize = 10)
-    ax.text(-0.01, 1.02, ("RA = " + str(RA)), verticalalignment = 'bottom', horizontalalignment = 'right', transform = ax.transAxes, color = 'green', fontsize = 8)
-    ax.text(-0.01, 0.99, ("dec = " + str(dec)), verticalalignment = 'bottom', horizontalalignment = 'right', transform = ax.transAxes, color = 'green', fontsize = 8)
-    ax.text(-0.01, 0.96, ("Color = " + str(color)), verticalalignment = 'bottom', horizontalalignment = 'right', transform = ax.transAxes, color = 'orange', fontsize = 8)
+    #adding legend to graph for readability
+    ax.legend(["Original LC", "Fitted Sine Curve"])
+    #plotting the RMS deviation onto the graph
+    ax.text(0.94, 1.03, ("RMS = " + str(rms)), verticalalignment = 'bottom', horizontalalignment = 'center', transform = ax.transAxes, color = 'purple', fontsize = 10)
+    #plotting coords, color onto the graph
+    ax.text(0.01, 1.09, ("RA = " + str(RA)), verticalalignment = 'bottom', horizontalalignment = 'center', transform = ax.transAxes, color = 'green', fontsize = 8)
+    ax.text(0.01, 1.06, ("dec = " + str(dec)), verticalalignment = 'bottom', horizontalalignment = 'center', transform = ax.transAxes, color = 'green', fontsize = 8)
+    if color == "No color photometric data":
+        ax.text(0.01, 1.03, (str(color)), verticalalignment = 'bottom', horizontalalignment = 'center', transform = ax.transAxes, color = 'orange', fontsize = 7)
+    else:
+        ax.text(0.01, 1.03, ("Color = " + str(color)), verticalalignment = 'bottom', horizontalalignment = 'center', transform = ax.transAxes, color = 'orange', fontsize = 8)
     #show plot if testing in IDE
     #plt.show()
     #save plot
