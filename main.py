@@ -10,9 +10,9 @@ from astropy import coordinates as coords
 from astroquery.gaia import Gaia
 
 #data locations; replace with coordinates of LC DAT directory and metadata txt file, respectively
-LCdir = r"C:\Users\micha\Documents\SciExt_RR-c\OGLE-ATLAS-RR-c\sample_DATs"
-outputdir = r"C:\Users\micha\Documents\SciExt_RR-c\PROCESSED"
-stardata = r"C:\Users\micha\Documents\SciExt_rr-c\OGLE-ATLAS-RR-c\star_data.txt"
+LCdir = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\I"
+outputdir = r"C:\Users\micha\Documents\BLG_data_processing\PROCESSED"
+stardata = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\BLG_metadata.txt"
 
 #get file directory
 LCfilelist = os.listdir(LCdir)
@@ -28,10 +28,23 @@ alldec = np.loadtxt(stardata, dtype = "str", skiprows = 7, usecols = 4)
 
 
 #implementing Gauss-Newton Algorithm for curve fitting non linear regression; in this case, of the form Asin(Bx+C)+D
-def gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase):
+def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
+    #in case of Gauss-Newton fitting error, we may fallback onto initial guess values for fit
+    fallback_sin = (amplitude * np.sin(((phases - mid_phase) * 2 * math.pi))) + average
+    fallback_rms = math.sqrt((1 / (fallback_sin.size)) * np.sum(abs(np.subtract(fallback_sin, brightnesses)) ** 2))
+    #in case of phase flipped midpoint mis-fit
+    phaseflip_fallback_sin = (-1 * fallback_sin) + (2 * average)
+    phaseflip_rms = math.sqrt((1 / (phaseflip_fallback_sin.size)) * np.sum(abs(np.subtract(phaseflip_fallback_sin, brightnesses)) ** 2))
+
+    if fallback_rms > phaseflip_rms:
+        print("fallback fit fail, using phase flip, rms = " + str(phaseflip_rms))
+        fallback_sin = phaseflip_fallback_sin
+        fallback_rms = phaseflip_rms
+
+
     #Gauss-Newton iterations and damping parameters
     iter = 400
-    damping = 0.1
+    damping = 0.01
 
     #PDEs in Gauss-Newton
     def pdA(x, b, c):
@@ -79,8 +92,17 @@ def gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase):
     #2pirms = math.sqrt((1 / (ysin.size)) * np.sum(abs(np.subtract(ysin, y)) ** 2))
 
     #generate Gauss-Newton fitted sine curve, and calculate RMS
-    gaussnewton_sin = np.array([B[0] * np.sin(B[1] * x + B[2]) + B[3]])
+    gaussnewton_sin = np.array([B[0] * np.sin((B[1] * x) + B[2]) + B[3]])
     rms = math.sqrt((1 / (gaussnewton_sin.size)) * np.sum(abs(np.subtract(gaussnewton_sin, brightnesses)) ** 2))
+
+    #fallback in case of fitting failure, use initial values
+    if rms > fallback_rms:
+        print("gaussnewton failed, fallback to standard")
+        print("gaussnewton rms = " + str(rms))
+        gaussnewton_sin = fallback_sin
+        rms = fallback_rms
+        print("fallback sine rms = " + str(rms))
+
 
     #print the RMS
     #print("RMS deviation = " + str(rms))
@@ -121,51 +143,7 @@ def gaiaquery(starnumber, allRA, alldec):
 
 
 
-#driver to iterate through all the stars and plot
-for countLC, file in enumerate(LCfilelist):
-
-    #reading LC data from LC files (dates and brightness)
-    dates = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=0)
-    brightnesses = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=1)
-    #grabbing relevant star data for current star (name, starting time, period) from DAT file
-    name = names[countLC]
-    starting_date = dates[0]
-    period = periods[countLC]
-
-    #simple phasing calculation to convert dates to 0 to 1 of a complete phase
-    phases = ((dates - starting_date) / period) % 1
-
-    #determining approximate values to fit the sine curve (Amplitude, Average Height Shift, Phase Shift), for initial guess values of Gauss-Newton algorithm.
-    #mean value taken as the arithmetic mean of all y-values
-    average = statistics.mean(brightnesses)
-    #better amplitude is the mean of the differences between average and max/min
-    amplitude = statistics.mean([(max(brightnesses) - average), average - min(brightnesses)])
-    #check for the closest value to the mean value of brightness (mid_brightness), find its corresponding x value (mid_index, mid_phase)
-    brightness_diff = lambda checkbrightness: abs(checkbrightness - average)
-    mid_brightness = min(brightnesses, key=brightness_diff)
-    mid_index = np.where(brightnesses == mid_brightness)[0][0]
-    mid_phase = phases[mid_index]
-
-    #print star name
-    #print("name = " + str(name))
-
-    #Gauss-Newton fit, return the y values of the fitted gauss-newton curve
-    gaussnewton_sin, rms = gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase)
-    #shorten RMS for better visibility
-    rms = float(rms)
-    rms = round(rms, 4 - int(math.floor(math.log10(abs(rms)))) - 1)
-
-    #query Gaia for color
-    RA, dec, color = gaiaquery(countLC, allRA, alldec)
-    if color == "--":
-        color = "No color photometric data"
-    else:
-        #shorten color for better visibility
-        color = float(color)
-        color = round(color, 5 - int(math.floor(math.log10(abs(color)))) - 1)
-
-    #plotting
-    #basic setup
+def plot(phases, brightnesses, gaussnewton_sin, RA, dec, rms, color, name, outputdir):
     fig = plt.figure(figsize = (10,5))
     fig.suptitle(str(name), fontsize = 22, fontweight = 'bold')
     ax = fig.add_subplot(111)
@@ -190,3 +168,57 @@ for countLC, file in enumerate(LCfilelist):
     #plt.show()
     #save plot
     plt.savefig((outputdir + "\\" + (name) + ".png"), format = "png")
+    plt.close("all")
+
+
+
+
+
+#driver to iterate through all the stars and plot
+for countLC, file in enumerate(LCfilelist):
+    #reading LC data from LC files (dates and brightness)
+    dates = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=0)
+    brightnesses = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=1)
+    #grabbing relevant star data for current star (name, starting time, period) from DAT file
+    name = names[countLC]
+    starting_date = dates[0]
+    period = periods[countLC]
+
+    #namecheck
+    print(name)
+
+    #simple phasing calculation to convert dates to 0 to 1 of a complete phase
+    phases = ((dates - starting_date) / period) % 1
+
+    #determining approximate values to fit the sine curve (Amplitude, Average Height Shift, Phase Shift), for initial guess values of Gauss-Newton algorithm.
+    #mean value taken as the arithmetic mean of all y-values
+    average = (max(brightnesses) + min(brightnesses))/2
+    #better amplitude is the mean of the differences between average and max/min
+    amplitude = statistics.mean([(max(brightnesses) - average), average - min(brightnesses)])
+    #check for the closest value to the mean value of brightness (mid_brightness), find its corresponding x value (mid_index, mid_phase)
+    brightness_diff = lambda checkbrightness: abs(checkbrightness - average)
+    mid_brightness = min(brightnesses, key=brightness_diff)
+    mid_index = np.where(brightnesses == mid_brightness)[0][0]
+    mid_phase = phases[mid_index]
+
+    #print star name
+    #print("name = " + str(name))
+
+    #Gauss-Newton fit, return the y values of the fitted gauss-newton curve
+    gaussnewton_sin, rms = gaussnewton(phases, brightnesses, average, amplitude, mid_phase)
+    #shorten RMS for better visibility
+    rms = float(rms)
+    rms = round(rms, 4 - int(math.floor(math.log10(abs(rms)))) - 1)
+
+    #query Gaia for color
+    RA, dec, color = gaiaquery(countLC, allRA, alldec)
+    if color == "--":
+        color = "No color photometric data"
+    else:
+        #shorten color for better visibility
+        color = float(color)
+        color = round(color, 5 - int(math.floor(math.log10(abs(color)))) - 1)
+
+    #plotting
+    #basic setup
+    plot(phases, brightnesses, gaussnewton_sin, RA, dec, rms, color, name, outputdir)
