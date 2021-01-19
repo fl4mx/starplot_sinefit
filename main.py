@@ -1,3 +1,10 @@
+"""
+TODO:
+- write GaussNewton failrate to debug file
+"""
+
+
+
 #dependencies
 import os
 from csv import writer
@@ -95,10 +102,6 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
         Jt = J.T
         B += damping * np.dot(np.dot(inv(np.dot(Jt, J)), Jt), r)
 
-    #test code to compare fitting performance between forced 2pi (full phase plot) vs B[1] (gauss newton determined % of plot)
-    #2pisin = np.array([B[0] * np.sin(2 * math.pi * x + B[2]) + B[3]])
-    #2pirms = math.sqrt((1 / (ysin.size)) * np.sum(abs(np.subtract(ysin, y)) ** 2))
-
     #generate Gauss-Newton fitted sine curve, and calculate RMS
     gaussnewton_sin = np.array([B[0] * np.sin((B[1] * x) + B[2]) + B[3]])
     rms = math.sqrt((1 / (gaussnewton_sin.size)) * np.sum(abs(np.subtract(gaussnewton_sin, brightnesses)) ** 2))
@@ -110,7 +113,7 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
         rms = fallback_rms
         #read Gauss-Newton failrate
         debugfiler = open(debugloc, "r")
-        GNfail = int(lastsorted.read())
+        GNfail = int(debugfiler.read())
         debugfiler.close()
         #write Gauss-Newton fail to debug
         debugfilew = open(debugloc, "w")
