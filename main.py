@@ -1,10 +1,3 @@
-"""
-TODO:
-- write GaussNewton failrate to debug file
-"""
-
-
-
 #dependencies
 import os
 from csv import writer
