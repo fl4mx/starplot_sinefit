@@ -1,3 +1,14 @@
+"""
+TODO:
+- write average RMS to debug/meta file
+- write RMS, color to meta file, so we can read into another script to develop meta statistics and graphs on correlation between color and RMS
+- write GaussNewton failrate to debug file
+- write to file every time in loop, re-read at start of next execution
+"""
+
+
+
+
 #dependencies
 import os
 import math
@@ -13,15 +24,23 @@ from astroquery.gaia import Gaia
 LCdir = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\I"
 outputdir = r"C:\Users\micha\Documents\BLG_data_processing\PROCESSED"
 stardata = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\BLG_metadata.txt"
+lastsortedloc = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\processed.txt"
 
 #get file directory
 LCfilelist = os.listdir(LCdir)
+LCfilelength = len(LCfilelist)
+
 
 #reading all star data from DAT file (names and periods for wave fitting, RA and dec for Gaia query)
 names = np.loadtxt(stardata, dtype=str, skiprows=7, usecols=0)
 periods = np.loadtxt(stardata, skiprows=7, usecols=8)
 allRA = np.loadtxt(stardata, dtype = "str", skiprows = 7, usecols = 3)
 alldec = np.loadtxt(stardata, dtype = "str", skiprows = 7, usecols = 4)
+
+#lastsaved
+lastsorted = open(lastsortedloc, "r")
+laststar = int(lastsorted.read())
+lastsorted.close()
 
 
 
@@ -44,7 +63,7 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
 
     #Gauss-Newton iterations and damping parameters
     iter = 400
-    damping = 0.01
+    damping = 0.02
 
     #PDEs in Gauss-Newton
     def pdA(x, b, c):
@@ -63,8 +82,6 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
     #standard method io
     x = phases
     y = brightnesses
-    # print(x)
-    # print(y)
 
     #initial guesses for A, B, C, D in sine
     B = np.matrix([[amplitude], [2 * math.pi], [(mid_phase) * 2 * math.pi], [average]])
@@ -103,10 +120,6 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
         rms = fallback_rms
         print("fallback sine rms = " + str(rms))
 
-
-    #print the RMS
-    #print("RMS deviation = " + str(rms))
-
     #return fitted curve and RMS
     return (gaussnewton_sin, str(rms))
 
@@ -127,14 +140,20 @@ def gaiaquery(starnumber, allRA, alldec):
 
     #query
     star = Gaia.query_object(coordinate=coord, width=width, height=height, columns=["source_id, ra, dec, bp_rp"])
-    color = str(star["bp_rp"][0])
+    #star is a table
+    #print("star:")
+    #print(star)
+    if (star["bp_rp"].size == 0):
+        color = "No color photometric data"
+    else:
+        color = str(star["bp_rp"][0])
+        if color == "--":
+            color = "No color photometric data"
+        else:
+            #shorten color for better visibility
+            color = float(color)
+            color = round(color, 5 - int(math.floor(math.log10(abs(color)))) - 1)
 
-    #check if coords are read correctly
-    #print("RA = " + str(RA))
-    #print("dec = " + str(dec))
-
-    #print color
-    #print("color = " + color)
 
     #return coordinates, color
     return (RA, dec, color)
@@ -174,8 +193,10 @@ def plot(phases, brightnesses, gaussnewton_sin, RA, dec, rms, color, name, outpu
 
 
 
-#driver to iterate through all the stars and plot
-for countLC, file in enumerate(LCfilelist):
+#driver to iterate through all the stars, starting from where we last left off
+for countLC in range(laststar, LCfilelength, 1):
+    #specifying the LC data file, without iterating through listdir in outer for loop
+    file = LCfilelist[countLC]
     #reading LC data from LC files (dates and brightness)
     dates = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=0)
     brightnesses = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=1)
@@ -184,7 +205,7 @@ for countLC, file in enumerate(LCfilelist):
     starting_date = dates[0]
     period = periods[countLC]
 
-    #namecheck
+    #simple progress indicator, tells us which star program is up to
     print(name)
 
     #simple phasing calculation to convert dates to 0 to 1 of a complete phase
@@ -201,9 +222,6 @@ for countLC, file in enumerate(LCfilelist):
     mid_index = np.where(brightnesses == mid_brightness)[0][0]
     mid_phase = phases[mid_index]
 
-    #print star name
-    #print("name = " + str(name))
-
     #Gauss-Newton fit, return the y values of the fitted gauss-newton curve
     gaussnewton_sin, rms = gaussnewton(phases, brightnesses, average, amplitude, mid_phase)
     #shorten RMS for better visibility
@@ -212,13 +230,12 @@ for countLC, file in enumerate(LCfilelist):
 
     #query Gaia for color
     RA, dec, color = gaiaquery(countLC, allRA, alldec)
-    if color == "--":
-        color = "No color photometric data"
-    else:
-        #shorten color for better visibility
-        color = float(color)
-        color = round(color, 5 - int(math.floor(math.log10(abs(color)))) - 1)
 
     #plotting
     #basic setup
     plot(phases, brightnesses, gaussnewton_sin, RA, dec, rms, color, name, outputdir)
+
+    #autosaver and resume
+    lastsorted = open(lastsortedloc, "w")
+    lastsorted.write(str(countLC))
+    lastsorted.close()
