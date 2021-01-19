@@ -1,16 +1,13 @@
 """
 TODO:
-- write average RMS to debug/meta file
-- write RMS, color to meta file, so we can read into another script to develop meta statistics and graphs on correlation between color and RMS
 - write GaussNewton failrate to debug file
-- write to file every time in loop, re-read at start of next execution
 """
-
 
 
 
 #dependencies
 import os
+from csv import writer
 import math
 import statistics
 import numpy as np
@@ -25,6 +22,8 @@ LCdir = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\I"
 outputdir = r"C:\Users\micha\Documents\BLG_data_processing\PROCESSED"
 stardata = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\BLG_metadata.txt"
 lastsortedloc = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\processed.txt"
+colordeviationstats = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\stats.csv"
+debugloc = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\debug.txt"
 
 #get file directory
 LCfilelist = os.listdir(LCdir)
@@ -56,7 +55,6 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
     phaseflip_rms = math.sqrt((1 / (phaseflip_fallback_sin.size)) * np.sum(abs(np.subtract(phaseflip_fallback_sin, brightnesses)) ** 2))
 
     if fallback_rms > phaseflip_rms:
-        print("fallback fit fail, using phase flip, rms = " + str(phaseflip_rms))
         fallback_sin = phaseflip_fallback_sin
         fallback_rms = phaseflip_rms
 
@@ -115,13 +113,23 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
     #fallback in case of fitting failure, use initial values
     if rms > fallback_rms:
         print("gaussnewton failed, fallback to standard")
-        print("gaussnewton rms = " + str(rms))
         gaussnewton_sin = fallback_sin
         rms = fallback_rms
-        print("fallback sine rms = " + str(rms))
+        #read Gauss-Newton failrate
+        debugfiler = open(debugloc, "r")
+        GNfail = int(lastsorted.read())
+        debugfiler.close()
+        #write Gauss-Newton fail to debug
+        debugfilew = open(debugloc, "w")
+        debugfilew.write(str(GNfail + 1))
+        debugfilew.close()
+
+    #shorten RMS for better visibility
+    roundedrms = float(rms)
+    roundedrms = round(roundedrms, 4 - int(math.floor(math.log10(abs(roundedrms)))) - 1)
 
     #return fitted curve and RMS
-    return (gaussnewton_sin, str(rms))
+    return (gaussnewton_sin, str(rms), str(roundedrms))
 
 
 
@@ -145,18 +153,20 @@ def gaiaquery(starnumber, allRA, alldec):
     #print(star)
     if (star["bp_rp"].size == 0):
         color = "No color photometric data"
+        roundedcolor = color
     else:
         color = str(star["bp_rp"][0])
         if color == "--":
             color = "No color photometric data"
+            roundedcolor = color
         else:
             #shorten color for better visibility
-            color = float(color)
-            color = round(color, 5 - int(math.floor(math.log10(abs(color)))) - 1)
+            roundedcolor = float(color)
+            roundedcolor = round(roundedcolor, 5 - int(math.floor(math.log10(abs(roundedcolor))) - 1))
 
 
     #return coordinates, color
-    return (RA, dec, color)
+    return (RA, dec, color, roundedcolor)
 
 
 
@@ -223,19 +233,24 @@ for countLC in range(laststar, LCfilelength, 1):
     mid_phase = phases[mid_index]
 
     #Gauss-Newton fit, return the y values of the fitted gauss-newton curve
-    gaussnewton_sin, rms = gaussnewton(phases, brightnesses, average, amplitude, mid_phase)
-    #shorten RMS for better visibility
-    rms = float(rms)
-    rms = round(rms, 4 - int(math.floor(math.log10(abs(rms)))) - 1)
+    gaussnewton_sin, rms, roundedrms = gaussnewton(phases, brightnesses, average, amplitude, mid_phase)
 
     #query Gaia for color
-    RA, dec, color = gaiaquery(countLC, allRA, alldec)
+    RA, dec, color, roundedcolor = gaiaquery(countLC, allRA, alldec)
+
+    #temp star stats data to write to CSV later
+    tempstatsarray = [rms, color]
 
     #plotting
     #basic setup
-    plot(phases, brightnesses, gaussnewton_sin, RA, dec, rms, color, name, outputdir)
+    plot(phases, brightnesses, gaussnewton_sin, RA, dec, roundedrms, roundedcolor, name, outputdir)
 
     #autosaver and resume
     lastsorted = open(lastsortedloc, "w")
-    lastsorted.write(str(countLC))
+    lastsorted.write(str(countLC + 1))
     lastsorted.close()
+
+    #star stats for final processing
+    with open(colordeviationstats, "a+", newline = "") as statsfile:
+        csv_writer = writer(statsfile)
+        csv_writer.writerow(tempstatsarray)
