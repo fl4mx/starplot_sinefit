@@ -7,15 +7,16 @@ TODO:
 
 #dependencies
 import os
-from csv import writer
+import csv
 import math
 import statistics
 import numpy as np
-from numpy.linalg import inv
 import matplotlib.pyplot as plt
 import astropy.units as u
 from astropy import coordinates as coords
 from astroquery.gaia import Gaia
+from csv import writer
+from numpy.linalg import inv
 
 #data locations; replace with coordinates of LC DAT directory and metadata txt file, respectively
 LCdir = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\I"
@@ -203,16 +204,28 @@ def plot(phases, brightnesses, gaussnewton_sin, RA, dec, rms, color, name, outpu
 for countLC in range(laststar, LCfilelength, 1):
     #specifying the LC data file, without iterating through listdir in outer for loop
     file = LCfilelist[countLC]
-    #reading LC data from LC files (dates and brightness)
-    dates = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=0)
-    brightnesses = np.loadtxt(LCdir + "\\" + file, delimiter=" ", usecols=1)
+
+    # reading LC data from LC files (dates and brightness)
+    #trim initial whitespaces in cases where time starts with 3 digit JD, so there is whitespace before time
+    dates = []
+    brightnesses = []
+    with open(LCdir + "\\" + file, "rt") as f:
+        read = csv.reader(f, skipinitialspace = True)
+        for row in read:
+            date = float(row[0].split()[0])
+            brightness = float(row[0].split()[1])
+            dates.append(date)
+            brightnesses.append(brightness)
+    dates = np.array(dates)
+    brightnesses = np.array(brightnesses)
+
     #grabbing relevant star data for current star (name, starting time, period) from DAT file
     name = names[countLC]
     starting_date = dates[0]
     period = periods[countLC]
 
     #simple progress indicator, tells us which star program is up to
-    print(name)
+    print("now processing " + name)
 
     #simple phasing calculation to convert dates to 0 to 1 of a complete phase
     phases = ((dates - starting_date) / period) % 1
@@ -250,3 +263,5 @@ for countLC in range(laststar, LCfilelength, 1):
     with open(colordeviationstats, "a+", newline = "") as statsfile:
         csv_writer = writer(statsfile)
         csv_writer.writerow(tempstatsarray)
+
+    print(name + " done!")
