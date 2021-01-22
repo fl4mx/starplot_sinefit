@@ -17,6 +17,7 @@ from astropy import coordinates as coords
 from astroquery.gaia import Gaia
 from csv import writer
 from numpy.linalg import inv
+from numpy.linalg import det
 
 #data locations; replace with coordinates of LC DAT directory and metadata txt file, respectively
 LCdir = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\I"
@@ -25,6 +26,7 @@ stardata = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\BLG_me
 lastsortedloc = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\processed.txt"
 colordeviationstats = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\stats.csv"
 debugloc = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\debug.txt"
+matrixbuglog = r"C:\Users\micha\Documents\BLG_data_processing\OGLE-ATLAS-RR-c\matrixbug.txt"
 
 #get file directory
 LCfilelist = os.listdir(LCdir)
@@ -34,6 +36,7 @@ LCfilelength = len(LCfilelist)
 #reading all star data from DAT file (names and periods for wave fitting, RA and dec for Gaia query)
 names = np.loadtxt(stardata, dtype=str, skiprows=7, usecols=0)
 periods = np.loadtxt(stardata, skiprows=7, usecols=8)
+fallbackRA = np.loadtxt(stardata, dtype = "str", skiprows = 7, usecols = 2)
 allRA = np.loadtxt(stardata, dtype = "str", skiprows = 7, usecols = 3)
 alldec = np.loadtxt(stardata, dtype = "str", skiprows = 7, usecols = 4)
 
@@ -47,7 +50,7 @@ lastsorted.close()
 
 
 #implementing Gauss-Newton Algorithm for curve fitting non linear regression; in this case, of the form Asin(Bx+C)+D
-def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
+def gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase):
     #in case of Gauss-Newton fitting error, we may fallback onto initial guess values for fit
     fallback_sin = (amplitude * np.sin(((phases - mid_phase) * 2 * math.pi))) + average
     fallback_rms = math.sqrt((1 / (fallback_sin.size)) * np.sum(abs(np.subtract(fallback_sin, brightnesses)) ** 2))
@@ -58,7 +61,6 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
     if fallback_rms > phaseflip_rms:
         fallback_sin = phaseflip_fallback_sin
         fallback_rms = phaseflip_rms
-
 
     #Gauss-Newton iterations and damping parameters
     iter = 400
@@ -101,7 +103,19 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
             J[i, 3] = pdD(x[i])
 
         Jt = J.T
-        B += damping * np.dot(np.dot(inv(np.dot(Jt, J)), Jt), r)
+        if (det(np.dot(Jt, J)) == 0.0):
+            print("determinant is zero, inversion would kill the loop.")
+            matrixbugfile = open(matrixbuglog, "a")
+            matrixbugfile.write("\n")
+            matrixbugfile.write(name)
+            break
+        #print("transpose " + str(Jt))
+        #print("dot1 " + str(np.dot(Jt, J)))
+        #print("inv " + str(inv(np.dot(Jt, J))))
+        #print("dot2 " + str(np.dot(inv(np.dot(Jt, J)), Jt)))
+        #print("dot3 " + str((np.dot(np.dot(inv(np.dot(Jt, J)), Jt), r))))
+        B += damping * (np.dot(np.dot(inv(np.dot(Jt, J)), Jt), r))
+        #print("B " + str(B))
 
     #generate Gauss-Newton fitted sine curve, and calculate RMS
     gaussnewton_sin = np.array([B[0] * np.sin((B[1] * x) + B[2]) + B[3]])
@@ -133,10 +147,16 @@ def gaussnewton(phases, brightnesses, average, amplitude, mid_phase):
 
 
 #implementing method of querying Gaia data for the bp-rp color of the star
-def gaiaquery(starnumber, allRA, alldec):
+def gaiaquery(starnumber, fallbackRA, allRA, alldec):
     #reading coords of the star
     RA = allRA[starnumber]
-    dec = alldec[starnumber]
+    #formatting issue in metadata, where they lose a column and dec is read as RA
+    if (float(RA.split(":")[0]) < 0.0):
+        print("metadata formatting issue, using fallback RA")
+        dec = RA
+        RA = fallbackRA[starnumber]
+    else:
+        dec = alldec[starnumber]
 
     #setting up coords query, height and width search precision
     coord = coords.SkyCoord(ra = RA, dec = dec, unit = (u.hourangle, u.deg), frame = "icrs")
@@ -219,6 +239,7 @@ for countLC in range(laststar, LCfilelength, 1):
     dates = np.array(dates)
     brightnesses = np.array(brightnesses)
 
+
     #grabbing relevant star data for current star (name, starting time, period) from DAT file
     name = names[countLC]
     starting_date = dates[0]
@@ -232,7 +253,7 @@ for countLC in range(laststar, LCfilelength, 1):
 
     #determining approximate values to fit the sine curve (Amplitude, Average Height Shift, Phase Shift), for initial guess values of Gauss-Newton algorithm.
     #mean value taken as the arithmetic mean of all y-values
-    average = (max(brightnesses) + min(brightnesses))/2
+    average = (max(brightnesses) + min(brightnesses)) / 2
     #better amplitude is the mean of the differences between average and max/min
     amplitude = statistics.mean([(max(brightnesses) - average), average - min(brightnesses)])
     #check for the closest value to the mean value of brightness (mid_brightness), find its corresponding x value (mid_index, mid_phase)
@@ -242,10 +263,10 @@ for countLC in range(laststar, LCfilelength, 1):
     mid_phase = phases[mid_index]
 
     #Gauss-Newton fit, return the y values of the fitted gauss-newton curve
-    gaussnewton_sin, rms, roundedrms = gaussnewton(phases, brightnesses, average, amplitude, mid_phase)
+    gaussnewton_sin, rms, roundedrms = gaussnewton(name, phases, brightnesses, average, amplitude, mid_phase)
 
     #query Gaia for color
-    RA, dec, color, roundedcolor = gaiaquery(countLC, allRA, alldec)
+    RA, dec, color, roundedcolor = gaiaquery(countLC, fallbackRA, allRA, alldec)
 
     #temp star stats data to write to CSV later
     tempstatsarray = [rms, color]
@@ -263,5 +284,3 @@ for countLC in range(laststar, LCfilelength, 1):
     with open(colordeviationstats, "a+", newline = "") as statsfile:
         csv_writer = writer(statsfile)
         csv_writer.writerow(tempstatsarray)
-
-    print(name + " done!")
