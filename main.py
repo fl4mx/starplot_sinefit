@@ -1,6 +1,6 @@
 """
 TODO:
-- write GaussNewton failrate to debug file
+- identify and rectify issues with Gauss Newton matrix dot and inverse issues
 """
 
 
