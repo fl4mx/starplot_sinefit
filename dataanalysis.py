@@ -15,6 +15,40 @@ outputdir = r"C:\Users\micha\Documents\DataAnalysis\Graphs"
 
 
 #functions
+def deviationvscolor(statsfile):
+    # loadtxt read into numpy ndarrays
+    deviations = np.loadtxt(statsfile, skiprows=0, delimiter=',', usecols=0)
+    colors = np.loadtxt(statsfile, dtype="str", skiprows=0, delimiter=',', usecols=1)
+
+    #colors[colors == "No color photometric data"] = 0
+    for count, color in enumerate(colors):
+
+        if color == "No color photometric data":
+            #sentinel values for mask
+            colors[count] = "99999"
+            deviations[count] = 99999
+        #print(count)
+        #print(colors[count])
+    colors = np.asfarray(colors ,float)
+    colors = np.ma.masked_equal(colors, 99999)
+    deviations = np.ma.masked_equal(deviations, 99999)
+    scatterplot(deviations, colors, "RMS Deviation", "Bp_Rp Color", "RMS Deviation vs Color", 0.2)
+
+def deviationvsbrightness(statsfile, metadata):
+    # loadtxt read into numpy ndarrays
+    deviations = np.loadtxt(statsfile, skiprows=0, delimiter=',', usecols=0)
+    avgbrightnesses = np.loadtxt(metadata, skiprows=7, usecols=6)
+    fallbackbrightnesses = np.loadtxt(metadata, skiprows=7, usecols=6)
+
+    for count, brightness in enumerate(avgbrightnesses):
+        if (brightness == "RRc"):
+            avgbrightnesses[count] = fallbackbrightnesses[count]
+    avgbrightnesses = np.ma.masked_equal(avgbrightnesses, -99.99)
+    #plot
+    scatterplot(deviations, avgbrightnesses, "RMS Deviation", "Avg Magnitude", "RMS Deviation vs Avg Magnitude", 0.1)
+    #scatterplot(deviations, colors, "RMS Deviation", "Bp_Rp Color", "RMS Deviation vs Color", 0.3)
+
+
 def periodvsmagnitude(metadata):
     #loadtxt read into numpy ndarrays
     periods = np.loadtxt(metadata, skiprows=7, usecols=8)
@@ -47,7 +81,6 @@ def scatterplot(x, y, xtitle, ytitle, plotname, size):
     fig.subplots_adjust(left=0.1, right=0.98, top=0.87, bottom=0.1)
     ax.set_xlabel(xtitle)
     ax.set_ylabel(ytitle)
-    plt.xticks(16)
     #plot
     ax.scatter(x, y, s = size)
     # show plot if testing in IDE
@@ -77,6 +110,7 @@ def histplot(x, bins, xtitle, ytitle, plotname):
 
 
 #execution
-
-#periodvsmagnitude(metadata)
-amountofdeviation()
+periodvsmagnitude(metadata)
+#amountofdeviation()
+deviationvscolor(statsfile)
+deviationvsbrightness(statsfile, metadata)
