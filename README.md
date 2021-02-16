@@ -9,12 +9,13 @@
 <h3 align="center">Data Analyses</h3>
 <p align="center"><img src="https://i.imgur.com/7SV1o0y.png" width="350" title="Period Lengths vs Mean Magnitude"></p>
 <p align="center">Generated plot of Period Lengths vs Mean Magnitude</p>
-
+<br>
 <p align="center"><img src="https://i.imgur.com/Zry0rEj.png" width="350" title="RMS Deviation Frequency Histogram"></p>
 <p align="center">Generated plot of RMS Deviation Frequency Histogram</p>
-
+<br>
 <p align="center"><img src="https://i.imgur.com/X6458aU.png" width="350" title="RMS Deviation vs Color"></p>
 <p align="center">Generated plot of RMS Deviation vs Color</p>
-
+<br>
 <p align="center"><img src="https://i.imgur.com/XrUagjy.png" width="350" title="RMS Deviation vs Mean Magnitude"></p>
 <p align="center">Generated plot of RMS Deviation vs Mean Magnitude</p>
+<br>
